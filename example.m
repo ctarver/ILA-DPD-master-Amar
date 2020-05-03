@@ -53,24 +53,68 @@ dpd = ILA_DPD(dpd_params);
 %% Run Experiment
 [~, w_out_dpd] = board.transmit(tx_data.data);
 dpd.perform_learning(tx_data.data, board);
+
 % Loop over coefficients here
-shifts = {0.05, -0.1, 0.1j, -0.1j}
+shifts = {-0.05 + 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05}'; % A somewhat odd way to move coefficients in a square
+all_coeffs = {};
 for k1 = 1:length(shifts)
     for b=1:length(dpd.coeffs)
-        dpd.coeffs(b,1) = dpd.coeffs(b, 1) + shifts{k1};
-        [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
-
-        before = w_out_dpd.measure_all_powers;
-        after = w_dpd.measure_all_powers;
-
-        %% Plot
-        w_out_dpd.plot_psd;
-        w_dpd.plot_psd;
-        dpd.plot_history;
+        dpd.coeffs(b, 1) = dpd.coeffs(b, 1) + shifts{k1, 1};
     end
+    
+    [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
+    before = w_out_dpd.measure_all_powers;
+    after = w_dpd.measure_all_powers;
+    
+    inter_coeffs = num2cell(dpd.coeffs);
+    after_coeffs = num2cell(after);
+    disp(class(inter_coeffs))
+    disp(class(after_coeffs))
+    
+    inter_coeffs{end+1} = after_coeffs{1,1};
+    all_coeffs = [all_coeffs, inter_coeffs];
 end
-%for b=1:length(dpd.coeffs)
-%    dpd.coeffs(b,1) = dpd.coeffs(b,1) - 0.05j
-%end
+disp(all_coeffs)
 
+x_axis = {};
+y_axis = {};
+z_axis = {};
+
+for order_iter = 1:length(dpd.coeffs)
+    thisfig = figure();
+    x_axis = {};
+    y_axis = {};
+    z_axis = {};
+    for shift_iter = 1:length(all_coeffs)
+        x_axis = [x_axis, real(all_coeffs{order_iter, shift_iter})];
+        y_axis = [y_axis, imag(all_coeffs{order_iter, shift_iter})];
+        z_axis = [z_axis, all_coeffs{length(dpd.coeffs) + 1, shift_iter}];
+    end
+    x_axis = cell2mat(x_axis);
+    y_axis = cell2mat(y_axis);
+    z_axis = cell2mat(z_axis);
+    disp(x_axis);
+    disp(y_axis);
+    disp(z_axis);
+    plot3(x_axis, y_axis, z_axis, 'o');
+    xlabel('Real')
+    ylabel('Complex')
+    zlabel('after')
+    if order_iter == 1
+        title('1st coefficient');
+    elseif order_iter == 2
+        title('2nd coefficient');
+    elseif order_iter == 3
+        title('3rd coefficient');
+    else
+        title(strcat(num2str(order_iter), 'th coefficient'));
+    end
+    grid on
+end
+
+
+% %% Plot
+%         w_out_dpd.plot_psd;
+%         w_dpd.plot_psd;
+%         dpd.plot_history;
 
