@@ -55,24 +55,42 @@ dpd = ILA_DPD(dpd_params);
 dpd.perform_learning(tx_data.data, board);
 
 % Loop over coefficients here
-shifts = {-0.05 + 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05}'; % A somewhat odd way to move coefficients in a square
-all_coeffs = {};
-for k1 = 1:length(shifts)
-    for b=1:length(dpd.coeffs)
-        dpd.coeffs(b, 1) = dpd.coeffs(b, 1) + shifts{k1, 1};
+shifts = [-0.05 + 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05]'; % A somewhat odd way to move coefficients in a square
+all_coeffs_cell = {};
+prec_iter = 0;
+precision = 4;
+while prec_iter < precision
+    all_coeffs = [];
+    
+    for k1 = 1:length(shifts)
+        for b=1:length(dpd.coeffs)
+            dpd.coeffs(b, 1) = dpd.coeffs(b, 1) + shifts(k1, 1);
+        end
+
+        [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
+        before = w_out_dpd.measure_all_powers;
+        after = w_dpd.measure_all_powers;
+
+        inter_coeffs = dpd.coeffs;
+        after_coeffs = after;
+
+        inter_coeffs = [inter_coeffs; after_coeffs(1,1)];
+        all_coeffs = [all_coeffs, inter_coeffs];
+        all_coeffs_cell = [all_coeffs_cell, num2cell(inter_coeffs)];
     end
-    
-    [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
-    before = w_out_dpd.measure_all_powers;
-    after = w_dpd.measure_all_powers;
-    
-    inter_coeffs = num2cell(dpd.coeffs);
-    after_coeffs = num2cell(after);
-    disp(class(inter_coeffs))
-    disp(class(after_coeffs))
-    
-    inter_coeffs{end+1} = after_coeffs{1,1};
-    all_coeffs = [all_coeffs, inter_coeffs];
+    disp(all_coeffs)
+    [m, I] = min(all_coeffs(3, :));
+    small = all_coeffs(:, I);
+    disp(I)
+    if I == 5
+        for d=1:length(shifts)
+            shifts(d) = shifts(d)/2;
+        end
+        prec_iter = prec_iter + 1;
+    end
+    for c=1:length(dpd.coeffs)
+        dpd.coeffs(c,1) = all_coeffs(c, I);
+    end
 end
 disp(all_coeffs)
 
@@ -85,10 +103,10 @@ for order_iter = 1:length(dpd.coeffs)
     x_axis = {};
     y_axis = {};
     z_axis = {};
-    for shift_iter = 1:length(all_coeffs)
-        x_axis = [x_axis, real(all_coeffs{order_iter, shift_iter})];
-        y_axis = [y_axis, imag(all_coeffs{order_iter, shift_iter})];
-        z_axis = [z_axis, all_coeffs{length(dpd.coeffs) + 1, shift_iter}];
+    for shift_iter = 1:length(all_coeffs_cell)
+        x_axis = [x_axis, real(all_coeffs_cell{order_iter, shift_iter})];
+        y_axis = [y_axis, imag(all_coeffs_cell{order_iter, shift_iter})];
+        z_axis = [z_axis, all_coeffs_cell{length(dpd.coeffs) + 1, shift_iter}];
     end
     x_axis = cell2mat(x_axis);
     y_axis = cell2mat(y_axis);
