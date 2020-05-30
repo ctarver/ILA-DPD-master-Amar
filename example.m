@@ -55,44 +55,82 @@ dpd = ILA_DPD(dpd_params);
 dpd.perform_learning(tx_data.data, board);
 
 % Loop over coefficients here
-shifts = [-0.05 + 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05]'; % A somewhat odd way to move coefficients in a square
+
+% Move coefficients in a square grid, from left to right going from row by row
+% [1]      [2]       [3] 
+% [4] [5 (original)] [6] 
+% [7]      [8]       [9]
+
+shifts = [-0.05 + 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05, -0.1 - 0.05j, 0.05, 0.05]'; 
+% all_coeffs_cell holds all coefficients along with the 'after' values to
+% be plotted later
 all_coeffs_cell = {};
 prec_iter = 0;
-precision = 4;
+% If the minimum value is at the previously found coefficient, decrease the grid by half.
+% 'precision' is a limit as to how many times this grid is cut in half
+precision = 2; 
+
 while prec_iter < precision
+    % all_coeffs holds just the current grid 
     all_coeffs = [];
     
     for k1 = 1:length(shifts)
         for b=1:length(dpd.coeffs)
+            % Loop through dpd.coeffs and apply a shift
             dpd.coeffs(b, 1) = dpd.coeffs(b, 1) + shifts(k1, 1);
         end
-
+        
+        % Transmit
         [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
         before = w_out_dpd.measure_all_powers;
         after = w_dpd.measure_all_powers;
-
+        
+        % Make copies
         inter_coeffs = dpd.coeffs;
         after_coeffs = after;
-
+        
+        % Append the leftmost value of after_coeff to the vector containing
+        % the coefficients
         inter_coeffs = [inter_coeffs; after_coeffs(1,1)];
+        
+        % Now append this vector containing the coefficients with their
+        % corresponding after value to all_coeffs. (This vector is reset in
+        % every loop and is only used to compare 'after' values)
         all_coeffs = [all_coeffs, inter_coeffs];
+        
+        % Also append this vector to a cell vector used to make the plot at
+        % the end
         all_coeffs_cell = [all_coeffs_cell, num2cell(inter_coeffs)];
     end
+    
     disp(all_coeffs)
+    
+    % Find the minimum after value in the grid of 9 coefficient/after
+    % vectors in all_coeffs
     [m, I] = min(all_coeffs(3, :));
     small = all_coeffs(:, I);
     disp(I)
+    
+    % If the coefficients corresponding to the smallest 'after' value is
+    % the 5th/center value (aka the 'current' coefficient), then divide all
+    % the shifts by half, increase prec_iter, and rerun the loop
     if I == 5
         for d=1:length(shifts)
             shifts(d) = shifts(d)/2;
         end
         prec_iter = prec_iter + 1;
+        fprintf ("prec iter is: %d\n", prec_iter)
     end
+    
+    % Change current coefficient to the ones corresponding to the smallest
+    % 'after' value
     for c=1:length(dpd.coeffs)
         dpd.coeffs(c,1) = all_coeffs(c, I);
     end
 end
 disp(all_coeffs)
+
+% Plotting code
 
 x_axis = {};
 y_axis = {};
