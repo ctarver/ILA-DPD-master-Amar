@@ -21,7 +21,7 @@ switch PA_board
         board = PowerAmplifier(7, 4);
         Fs = 40e6;    % WARP board sampling rate.
     case 'webRF'
-        dbm_power = -22;
+        dbm_power = -24; % Originally -22
         board = webRF(dbm_power);
 end
 
