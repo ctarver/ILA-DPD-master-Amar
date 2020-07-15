@@ -53,28 +53,12 @@ dpd = ILA_DPD(dpd_params);
 %% Run Experiment
 [~, w_out_dpd] = board.transmit(tx_data.data);
 dpd.perform_learning(tx_data.data, board);
-<<<<<<< Updated upstream
-% Loop over coefficients here
-shifts = {0.05, -0.1, 0.1j, -0.1j}
-for k1 = 1:length(shifts)
-    for b=1:length(dpd.coeffs)
-        dpd.coeffs(b,1) = dpd.coeffs(b, 1) + shifts{k1};
-        [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
-
-        before = w_out_dpd.measure_all_powers;
-        after = w_dpd.measure_all_powers;
-
-        %% Plot
-        w_out_dpd.plot_psd;
-        w_dpd.plot_psd;
-        dpd.plot_history;
-    end
-=======
 
 [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
 after = w_dpd.measure_all_powers;
 
 after_values = [after(1,1)];
+total_gradient = inf;
 
 while total_gradient > 0.005 % Iterates until the sum of the gradient vector is less than 0.005
     % Shift in R^2 space
@@ -215,19 +199,14 @@ while total_gradient > 0.005 % Iterates until the sum of the gradient vector is 
     [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
     after_lvalue = w_dpd.measure_all_powers;
     after_values = [after_values, after_lvalue(1,1)]; 
->>>>>>> Stashed changes
+
 end
-%for b=1:length(dpd.coeffs)
-%    dpd.coeffs(b,1) = dpd.coeffs(b,1) - 0.05j
-%end
 
 disp(after_values);
 
-<<<<<<< Updated upstream
-=======
 %% Plot
         w_out_dpd.plot_psd;
         w_dpd.plot_psd;
         dpd.plot_history;
 
->>>>>>> Stashed changes
+
