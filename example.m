@@ -142,10 +142,10 @@ while total_gradient > 0.005 % Iterates until the sum of the gradient vector is 
                 % output spectrum power. This is a way I figured out how to
                 % do it, but I'll see if it's possible to simplify it down
                 % a bit.
-                copy1 = dpd;
-                copy2 = dpd;
-                copy3 = dpd;
-                copy4 = dpd;
+                copy1 = dpd.coeffs;
+                copy2 = dpd.coeffs;
+                copy3 = dpd.coeffs;
+                copy4 = dpd.coeffs;
                 copy1(j, 1) = copy1(j, 1) + del;
                 copy1(i, 1) = copy1(i, 1) + del;
                 copy2(j, 1) = copy2(j, 1) - del;
