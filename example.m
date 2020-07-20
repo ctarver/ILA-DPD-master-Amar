@@ -60,12 +60,14 @@ after = w_dpd.measure_all_powers;
 after_values = [after(1,1)];
 total_gradient = inf;
 
-while total_gradient > 0.005 % Iterates until the sum of the gradient vector is less than 0.005
+while total_gradient > 0.5 % Iterates until the sum of the gradient vector is less than 0.5
     % Shift in R^2 space
     del = 0.05 + 0.05i; 
     coeff_length = length(dpd.coeffs);
+    
     % Initialize an empty gradient_vector
     gradient_vector = zeros(coeff_length,1);
+    
     for i = 1:coeff_length % Fills in each value in the gradient vector
         original_coeffs = dpd.coeffs;
         plus_delta = dpd.coeffs;
@@ -142,10 +144,10 @@ while total_gradient > 0.005 % Iterates until the sum of the gradient vector is 
                 % output spectrum power. This is a way I figured out how to
                 % do it, but I'll see if it's possible to simplify it down
                 % a bit.
-                copy1 = dpd;
-                copy2 = dpd;
-                copy3 = dpd;
-                copy4 = dpd;
+                copy1 = dpd.coeffs;
+                copy2 = dpd.coeffs;
+                copy3 = dpd.coeffs;
+                copy4 = dpd.coeffs;
                 copy1(j, 1) = copy1(j, 1) + del;
                 copy1(i, 1) = copy1(i, 1) + del;
                 copy2(j, 1) = copy2(j, 1) - del;
@@ -185,14 +187,15 @@ while total_gradient > 0.005 % Iterates until the sum of the gradient vector is 
     end
     inv_hess = inv(hessian_grid);
     
-    % See how much optimizer is changing the dpd.coeff vector by
-    new_vect = dpd.coeffs - (inv_hess * gradient_vector);
-    disp(new_vect - dpd.coeffs);
+%     % See how much optimizer is changing the dpd.coeff vector by
+%     new_vect = dpd.coeffs - (inv_hess * gradient_vector);
+%     disp(new_vect - dpd.coeffs);
     
     %xk+1 = xk - [Hf(xk)]^-1 * gradient(f(xk)) 
     dpd.coeffs = dpd.coeffs - (inv_hess * gradient_vector);
     
     total_gradient = sum(gradient_vector);
+    disp(total_gradient)
     
     % Add to the after_values vector to tell whether model is actually
     % optimizing
@@ -208,5 +211,4 @@ disp(after_values);
         w_out_dpd.plot_psd;
         w_dpd.plot_psd;
         dpd.plot_history;
-
 
