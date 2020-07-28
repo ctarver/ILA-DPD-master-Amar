@@ -1,6 +1,6 @@
-classdef PA_NN_Model < TXRX
+classdef PA_NN_Model < handle
     %PAModel Uses a NN to create a forward model of a PA.
-
+    
     properties
         Class = 'PA_NN_Model'
     end
@@ -23,90 +23,66 @@ classdef PA_NN_Model < TXRX
         load_nn % to load existent net or not
         model % model name to be loaded
         history % Holds onto the coeffs used at each iteration
+        sampling_rate
     end
     
     methods
-        function obj = PA_NN_Model(params, tx_signal, rx_signal)
-            try
-                obj.n_neurons = params.n_neurons;
-                obj.n_hidden_layers = params.n_hidden_layers;
-                obj.memory_depth = params.memory_depth;
-                obj.activation_function = params.activation_function;
-                obj.loss_function = params.loss_function;
-                obj.optimizer = params.optimizer;
-                obj.rnn = params.rnn;
-                obj.delay = params.delay;
-                obj.learning_rate = params.learning_rate;
-                obj.n_epochs = params.n_epochs;
-                obj.load_nn = params.load_nn;
-                obj.model = params.model;
-            catch
-                obj.n_neurons = 3;
-                obj.n_hidden_layers = 2;
-                obj.memory_depth = 1;
-                obj.activation_function = 'poslin';
-                obj.loss_function = 'mse';
-                obj.optimizer = 'trainlm';
-                obj.rnn = 0;
-                obj.delay = 1:2;
-                obj.learning_rate = 0.01;
-                obj.n_epochs = 1000;
-                obj.load_nn = 0;
-                obj.model = "";
-                warning('Using default 3 neurons and layers of 2');
-            end
+        function obj = PA_NN_Model()
+            obj.n_neurons = 12;
+            obj.n_hidden_layers = 2;
+            obj.memory_depth = 2;
+            obj.activation_function = 'poslin';
+            obj.loss_function = 'mse';
+            obj.optimizer = 'trainlm';
+            obj.rnn = 0;
+            obj.delay = 1;
+            obj.learning_rate = 0.01;
+            obj.n_epochs = 1000;
+            obj.load_nn = 0;
+            obj.model = "";
             
             obj.use_dc_term = 1;
-            obj.normalize_by = params.normalize_by;
-            obj.normalize_value = params.normalize_value;
-            obj.physical_attenuation = 0;
-            obj.sampling_rate = tx_signal.current_fs;
+            obj.sampling_rate = 200e6;
             
-            if (~obj.load_nn)
-                obj.net = obj.run_setup;
-                obj.learn_model(tx_signal, rx_signal);
-            else 
-                obj.load();
-            end
-            
+            obj.run_setup();
         end
         
-        function net = run_setup(obj)
+        function run_setup(obj)
             % setup neural network size
             nn_size = [];
             for i = 1:obj.n_hidden_layers
-                nn_size = [nn_size, obj.n_neurons]; 
+                nn_size = [nn_size, obj.n_neurons];
             end
             
-            %net.numInputs = 2*obj.memory_depth; 
+            %net.numInputs = 2*obj.memory_depth;
             
             % initialize & specify optimizer
             if obj.rnn
-                net = layrecnet(obj.delay, nn_size, obj.optimizer);                
-%             elseif obj.memory_depth > 1
-%                 net = timedelaynet(1:obj.memory_depth, nn_size, obj.optimizer);    
+                obj.net = layrecnet(obj.delay, nn_size, obj.optimizer);
+                %             elseif obj.memory_depth > 1
+                %                 net = timedelaynet(1:obj.memory_depth, nn_size, obj.optimizer);
             else
-                net = feedforwardnet(nn_size, obj.optimizer);
+                obj.net = feedforwardnet(nn_size, obj.optimizer);
             end
-            net = init(net);
+            obj.net = init(obj.net);
             
             % set activation
             for i = 1:obj.n_hidden_layers
-                net.layers{i}.transferFcn = obj.activation_function;
+                obj.net.layers{i}.transferFcn = obj.activation_function;
             end
             
-            % set loss function 
-            net.performFcn = obj.loss_function;
-                           
+            % set loss function
+            obj.net.performFcn = obj.loss_function;
+            
             % set maximum epochs & learning rate
-            net.trainParam.epochs = obj.n_epochs;
-            net.trainParam.lr = obj.learning_rate;
+            obj.net.trainParam.epochs = obj.n_epochs;
+            obj.net.trainParam.lr = obj.learning_rate;
         end
-       
+        
         function learn_model(obj, tx_signal, rx_signal)
             % learn PA NN Model considering memory effect
             % TODO: Try to delay manually
-            tx_train = [real(tx_signal.data) imag(tx_signal.data)]';            
+            tx_train = [real(tx_signal.data) imag(tx_signal.data)]';
             rx_train = [real(rx_signal.data) imag(rx_signal.data)]';
             tx_tmp = tx_train';
             for depth = 1:obj.memory_depth-1
@@ -118,8 +94,18 @@ classdef PA_NN_Model < TXRX
             
             obj.net = train(obj.net, tx_tmp, rx_train, 'useParallel','yes','useGPU','yes','showResources','yes');
         end
-                    
-        function out = use_pa(obj, input_signal, ~)
+        
+        function [out, raw] = transmit(obj, in, processing_flag)
+            pa_in = in;
+            if strcmp(obj.Class, 'webRF')
+                pa_in = obj.pad_zeros(pa_in, 200);
+                pa_in = obj.make_multiple_copies(pa_in, 4);
+            end
+            out = 0; % dummy. 
+            raw = use_pa(obj, pa_in); % VSG uses the name to save to device
+        end
+        
+        function out = use_pa(obj, input_signal)
             % main method to use the learned PA Model.
             input = [real(input_signal) imag(input_signal)]';
             input_tmp = input';
@@ -129,21 +115,21 @@ classdef PA_NN_Model < TXRX
                 input_tmp = [input_tmp delayed_real delayed_imag];
             end
             input_tmp = input_tmp';
-           
-            output = obj.net(input_tmp, 'useParallel','yes','useGPU','yes','showResources','yes');         
+            
+            output = obj.net(input_tmp, 'useParallel','yes','useGPU','yes','showResources','yes');
             out = 1j * output(2,:)' + output(1,:)';
         end
         
-        function save(obj) 
+        function save(obj)
             % save neural net
             path = sprintf("%d_neurons_%d_layers_%d_memorydepth_%s_%s_nn", obj.n_neurons, ...
                 obj.n_hidden_layers, obj.memory_depth, obj.loss_function, ...
                 obj.activation_function);
-            net = obj.net;
-            save(path, "net");
+            my_net = obj.net;
+            save(path, "my_net");
         end
         
-        function load(obj) 
+        function load(obj)
             % load neural net
             obj.net = load(obj.model,'net').net;
         end
@@ -157,7 +143,7 @@ classdef PA_NN_Model < TXRX
             noise_vector = randn(n_samples, 1) + 1i*rand(n_samples, 1);
             noise_signal = Signal(noise_vector, obj.sampling_rate);
             noise_signal.normalize_to_this_rms(noise_power);
-            out = noise_signal;            
+            out = noise_signal;
         end
         
         function plot_history(obj)

@@ -9,7 +9,7 @@ addpath(genpath('Power-Amplifier-Model'))
 rms_input = 0.50;
 
 % Setup the PA simulator or TX board
-PA_board = 'webRF'; % either 'WARP', 'webRF', or 'none'
+PA_board = 'NN'; % either 'WARP', 'webRF', ''NN', or 'none'
 
 switch PA_board
     case 'WARP'
@@ -20,7 +20,7 @@ switch PA_board
     case 'none'
         board = PowerAmplifier(7, 4);
         Fs = 40e6;    % WARP board sampling rate.
-    case 'webRF'
+    case {'webRF', 'NN'}
         dbm_power = -24; % Originally -22
         board = webRF(dbm_power);
 end
@@ -45,10 +45,21 @@ dpd_params.lag_depth = 0;  % 0 is a standard MP. >0 is GMP.
 dpd_params.nIterations = 1;
 dpd_params.learning_rate = 0.75;
 dpd_params.learning_method = 'newton'; % Or 'ema' for exponential moving average.
-dpd_params.use_even = false; 
+dpd_params.use_even = false;
 dpd_params.use_conj = 0;    % Conjugate branch. Currently only set up for MP (lag = 0)
 dpd_params.use_dc_term = 0; % Adds an additional term for DC
 dpd = ILA_DPD(dpd_params);
+
+% If we are working with the NN, broadcast through the rfweblab to get
+% training data, train the NN, then use that going forward instead of
+% RFWebLeb
+switch PA_board
+    case 'NN'
+        [~, web_rf_w_out_dpd] = board.transmit(tx_data.data);
+        board = PA_NN_Model();
+        board.learn_model(tx_data, web_rf_w_out_dpd)
+end
+
 
 %% Run Experiment
 [~, w_out_dpd] = board.transmit(tx_data.data);
@@ -62,7 +73,7 @@ total_gradient = inf;
 
 while total_gradient > 0.5 % Iterates until the sum of the gradient vector is less than 0.5
     % Shift in R^2 space
-    del = 0.05 + 0.05i; 
+    del = 0.05 + 0.05i;
     coeff_length = length(dpd.coeffs);
     
     % Initialize an empty gradient_vector
@@ -102,7 +113,7 @@ while total_gradient > 0.5 % Iterates until the sum of the gradient vector is le
     hessian_grid = zeros(hess_dim, hess_dim);
     
     % Filling in the Hessian Matrix
-    for i = 1:hess_dim 
+    for i = 1:hess_dim
         for j = 1:hess_dim
             original_coeffs = dpd.coeffs;
             % Filling in the second derivatives along the diagonal
@@ -135,8 +146,8 @@ while total_gradient > 0.5 % Iterates until the sum of the gradient vector is le
                 dpd.coeffs = original_coeffs;
                 % Set the value in the Hessian Matrix
                 hessian_grid(i, j) = (plus_del_out - 2 * zero_del_out + minus_del_out) / (del^2);
-            
-            % For all other values not on the diagonal
+                
+                % For all other values not on the diagonal
             else
                 % If you look at the formula I wrote out, I have to pass
                 % different values into the "function", which in this case
@@ -187,11 +198,11 @@ while total_gradient > 0.5 % Iterates until the sum of the gradient vector is le
     end
     inv_hess = inv(hessian_grid);
     
-%     % See how much optimizer is changing the dpd.coeff vector by
-%     new_vect = dpd.coeffs - (inv_hess * gradient_vector);
-%     disp(new_vect - dpd.coeffs);
+    %     % See how much optimizer is changing the dpd.coeff vector by
+    %     new_vect = dpd.coeffs - (inv_hess * gradient_vector);
+    %     disp(new_vect - dpd.coeffs);
     
-    %xk+1 = xk - [Hf(xk)]^-1 * gradient(f(xk)) 
+    %xk+1 = xk - [Hf(xk)]^-1 * gradient(f(xk))
     dpd.coeffs = dpd.coeffs - (inv_hess * gradient_vector);
     
     total_gradient = sum(gradient_vector);
@@ -201,14 +212,14 @@ while total_gradient > 0.5 % Iterates until the sum of the gradient vector is le
     % optimizing
     [~, w_dpd] = board.transmit(dpd.predistort(tx_data.data));
     after_lvalue = w_dpd.measure_all_powers;
-    after_values = [after_values, after_lvalue(1,1)]; 
-
+    after_values = [after_values, after_lvalue(1,1)];
+    
 end
 
 disp(after_values);
 
 %% Plot
-        w_out_dpd.plot_psd;
-        w_dpd.plot_psd;
-        dpd.plot_history;
+w_out_dpd.plot_psd;
+w_dpd.plot_psd;
+dpd.plot_history;
 
